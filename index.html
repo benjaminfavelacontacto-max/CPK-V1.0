@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPK VITROX</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <!-- Chart.js 4 + Annotation plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+</head>
+<body>
+
+    <!-- ═══════════════════════════════ TOP BAR ═══════════════════════════════ -->
+    <header id="topbar">
+        <div class="logo-wrap">
+            <img id="smt-logo" src="assets/SMTLogo.png" alt="SMT"
+                 onerror="this.style.display='none'; document.getElementById('logo-fallback').style.display='flex'">
+            <div id="logo-fallback" class="logo-fallback">SMT</div>
+        </div>
+
+        <div class="topbar-controls">
+            <label for="mag-select" class="picker-label">Cámara:</label>
+            <select id="mag-select" class="picker">
+                <option value="High Mag (M11)">High Mag (M11)</option>
+                <option value="Low Mag (M15)">Low Mag (M15)</option>
+                <option value="Low Mag (M19)">Low Mag (M19)</option>
+            </select>
+
+            <button class="btn btn-primary" onclick="document.getElementById('folder-input').click()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                     fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2
+                     0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>
+                Cargar Carpeta
+            </button>
+
+            <button id="pdf-btn" class="btn btn-danger" onclick="exportPDF()" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+                     fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2
+                     2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 13h8v1H8v-1zm0 3h8v1H8v-1zm0-6h3v1H8v-1z"/></svg>
+                Descargar PDF
+            </button>
+        </div>
+
+        <!-- Hidden folder picker -->
+        <input type="file" id="folder-input" webkitdirectory multiple style="display:none">
+    </header>
+
+    <!-- ══════════════════════════════ EMPTY STATE ════════════════════════════ -->
+    <div id="empty-state">
+        <div class="empty-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24"
+                 fill="currentColor" opacity="0.25">
+                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+            </svg>
+        </div>
+        <h2>Sin Datos Cargados</h2>
+        <button class="btn btn-primary" onclick="document.getElementById('folder-input').click()">
+            Cargar Carpeta de Logs
+        </button>
+    </div>
+
+    <!-- ══════════════════════════════ MAIN CONTENT ═══════════════════════════ -->
+    <div id="main-content" style="display:none">
+
+        <!-- LEFT: Table -->
+        <div id="left-panel">
+            <div class="panel-header" id="log-count">LOGS (0)</div>
+            <div class="table-wrap">
+                <table id="log-table">
+                    <thead>
+                        <tr>
+                            <th>Archivo</th>
+                            <th>X</th>
+                            <th>Y</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- RIGHT: Stats + Charts -->
+        <div id="right-panel">
+
+            <!-- Stats row -->
+            <div class="stats-row">
+                <div id="stats-x" class="stats-card"></div>
+                <div id="stats-y" class="stats-card"></div>
+                <div id="legend-card" class="stats-card legend-card"></div>
+            </div>
+
+            <!-- Charts -->
+            <div class="charts-section">
+                <div class="chart-wrap">
+                    <p class="chart-title">X-ray Spot (X)</p>
+                    <canvas id="chart-x" height="250"></canvas>
+                </div>
+                <div class="chart-wrap">
+                    <p class="chart-title">X-ray Spot (Y)</p>
+                    <canvas id="chart-y" height="250"></canvas>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="js/cpk.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
