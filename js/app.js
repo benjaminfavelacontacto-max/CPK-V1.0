@@ -1,9 +1,3 @@
-/**
- * app.js — UI controller
- * Dark mode (Apple HIG) + jsPDF report generation
- * Mirrors: ContentView.swift · CPKChartView.swift
- */
-
 'use strict';
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -13,20 +7,22 @@ let chartX      = null;
 let chartY      = null;
 const limits    = JSON.parse(JSON.stringify(DEFAULT_LIMITS));
 
-// ── Dark mode chart palette (Apple dark system colors) ────────────────────────
-const DARK = {
-    line:       '#0a84ff',
-    lineFill:   'rgba(10,132,255,0.08)',
-    usl:        'rgba(255,69,58,0.9)',
-    lsl:        'rgba(255,69,58,0.9)',
-    mean:       'rgba(48,209,88,0.9)',
-    grid:       'rgba(255,255,255,0.07)',
-    gridBorder: 'rgba(255,255,255,0.12)',
-    tick:       '#636366',
-    annotation: { text: '#fff', padding: { x: 7, y: 4 }, radius: 5 }
+// ── Apple Dark chart palette ──────────────────────────────────────────────────
+const D = {
+    line:      '#0a84ff',
+    fill:      'rgba(10,132,255,0.07)',
+    point:     '#0a84ff',
+    pointBdr:  'rgba(255,255,255,0.12)',
+    grid:      'rgba(255,255,255,0.065)',
+    tick:      '#636366',
+    uslColor:  'rgba(255,69,58,0.85)',
+    meanColor: 'rgba(48,209,88,0.9)',
+    annText:   '#fff',
+    annPad:    { x: 7, y: 4 },
+    annRad:    5
 };
 
-// ── Event Listeners ───────────────────────────────────────────────────────────
+// ── Events ────────────────────────────────────────────────────────────────────
 document.getElementById('mag-select').addEventListener('change', e => {
     selectedMag = e.target.value;
     render();
@@ -34,27 +30,32 @@ document.getElementById('mag-select').addEventListener('change', e => {
 
 document.getElementById('folder-input').addEventListener('change', async e => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
+    if (!files || !files.length) return;
+    showLoading('Cargando logs…');
     allLogData = await parseLogs(files);
     e.target.value = '';
     render();
+    hideLoading();
 });
 
-// ── Main Render ───────────────────────────────────────────────────────────────
+// ── Render ────────────────────────────────────────────────────────────────────
 function render() {
-    const current = allLogData.filter(d => d.magType === selectedMag);
-    const hasData = current.length > 0;
+    const cur     = allLogData.filter(d => d.magType === selectedMag);
+    const hasData = cur.length > 0;
 
     document.getElementById('empty-state').style.display  = hasData ? 'none' : 'flex';
     document.getElementById('main-content').style.display = hasData ? 'flex' : 'none';
     document.getElementById('pdf-btn').disabled            = !hasData;
 
+    const dot = document.querySelector('.panel-header-dot');
+    if (dot) dot.classList.toggle('active', hasData);
+
     if (!hasData) return;
 
-    renderTable(current);
-    renderStatsCards(current);
+    renderTable(cur);
+    renderStatsCards(cur);
     renderLegend();
-    renderCharts(current);
+    renderCharts(cur);
 }
 
 // ── Table ─────────────────────────────────────────────────────────────────────
@@ -71,14 +72,14 @@ function renderTable(data) {
 // ── Stats Cards ───────────────────────────────────────────────────────────────
 function renderStatsCards(data) {
     const lim = limits[selectedMag];
-    renderStatsCard('stats-x', 'X-Ray Spot (X)', data.map(d => d.x), lim.xLSL, lim.xUSL);
-    renderStatsCard('stats-y', 'X-Ray Spot (Y)', data.map(d => d.y), lim.yLSL, lim.yUSL);
+    buildStatsCard('stats-x', 'X-Ray Spot (X)', data.map(d => d.x), lim.xLSL, lim.xUSL, 'badge-x');
+    buildStatsCard('stats-y', 'X-Ray Spot (Y)', data.map(d => d.y), lim.yLSL, lim.yUSL, 'badge-y');
 }
 
-function renderStatsCard(elId, title, values, lsl, usl) {
+function buildStatsCard(elId, title, values, lsl, usl, badgeId) {
     const { mean, stdDev } = calcStats(values);
     const { cpk }          = calcCPK(mean, stdDev, lsl, usl);
-    const status           = getStatus(cpk);
+    const s                = getStatus(cpk);
 
     document.getElementById(elId).innerHTML = `
         <h3>${title}</h3>
@@ -105,27 +106,38 @@ function renderStatsCard(elId, title, values, lsl, usl) {
             <span class="cpk-label">Cpk</span>
             <span class="cpk-value">${cpk.toFixed(12)}</span>
         </div>
-        <span class="status-badge" style="background:${status.bg};color:${status.color}">
-            ${status.text}
-        </span>`;
+        <div class="status-badge" style="background:${s.bg};color:${s.color};box-shadow:0 4px 14px ${s.bg}55">
+            ${s.text}
+        </div>`;
+
+    // Also update the chart badge
+    if (badgeId) {
+        const badge = document.getElementById(badgeId);
+        if (badge) {
+            badge.textContent = s.text;
+            badge.style.background = s.bg + '22';
+            badge.style.color      = s.bg;
+            badge.style.border     = `1px solid ${s.bg}44`;
+        }
+    }
 }
 
 // ── Legend ────────────────────────────────────────────────────────────────────
 function renderLegend() {
-    const criteria = [
-        { t: '≥ 2.0',  label: 'Excellent',  bg: '#30d158', color: '#000' },
-        { t: '≥ 1.67', label: 'Optimal',    bg: '#32ade6', color: '#000' },
-        { t: '≥ 1.33', label: 'Good',       bg: '#34c759', color: '#000' },
-        { t: '≥ 1.0',  label: 'Acceptable', bg: '#3a3a3c', color: '#fff' },
-        { t: '≥ 0.67', label: 'Bad',        bg: '#ff9f0a', color: '#000' },
-        { t: '< 0.67', label: 'Terrible',   bg: '#ff453a', color: '#fff' },
+    const rows = [
+        { t:'≥ 2.0',  l:'Excellent',  bg:'#30d158', c:'#000' },
+        { t:'≥ 1.67', l:'Optimal',    bg:'#32ade6', c:'#000' },
+        { t:'≥ 1.33', l:'Good',       bg:'#34c759', c:'#000' },
+        { t:'≥ 1.0',  l:'Acceptable', bg:'#3a3a3c', c:'#fff' },
+        { t:'≥ 0.67', l:'Bad',        bg:'#ff9f0a', c:'#000' },
+        { t:'< 0.67', l:'Terrible',   bg:'#ff453a', c:'#fff' },
     ];
     document.getElementById('legend-card').innerHTML = `
         <h3>Criterios</h3>
-        ${criteria.map(c => `
+        ${rows.map(r => `
             <div class="legend-item">
-                <span class="legend-threshold">${c.t}</span>
-                <span class="legend-badge" style="background:${c.bg};color:${c.color}">${c.label}</span>
+                <span class="legend-threshold">${r.t}</span>
+                <span class="legend-badge" style="background:${r.bg}22;color:${r.bg};border:1px solid ${r.bg}44">${r.l}</span>
             </div>`).join('')}`;
 }
 
@@ -136,110 +148,98 @@ function renderCharts(data) {
     buildChart('chart-y', data.map(d => d.y), lim.yLSL, lim.yUSL, 'Y');
 }
 
-function buildChart(canvasId, values, lsl, usl, axis) {
+function buildChart(id, values, lsl, usl, axis) {
     if (axis === 'X' && chartX) { chartX.destroy(); chartX = null; }
     if (axis === 'Y' && chartY) { chartY.destroy(); chartY = null; }
 
-    const mean    = values.reduce((a, b) => a + b, 0) / Math.max(1, values.length);
-    const minVal  = Math.min(...values, lsl);
-    const maxVal  = Math.max(...values, usl);
-    const padding = (maxVal - minVal) * 0.2;
+    const mean    = values.reduce((a,b) => a+b, 0) / Math.max(1, values.length);
+    const minV    = Math.min(...values, lsl);
+    const maxV    = Math.max(...values, usl);
+    const pad     = (maxV - minV) * 0.2;
+    const ctx     = document.getElementById(id).getContext('2d');
 
-    const ctx = document.getElementById(canvasId).getContext('2d');
-    const instance = new Chart(ctx, {
+    const inst = new Chart(ctx, {
         type: 'line',
         data: {
             labels: values.map((_, i) => i + 1),
             datasets: [{
                 data: values,
-                borderColor: DARK.line,
-                backgroundColor: DARK.lineFill,
-                pointBackgroundColor: DARK.line,
-                pointBorderColor: 'rgba(255,255,255,0.15)',
+                borderColor: D.line,
+                backgroundColor: D.fill,
+                pointBackgroundColor: D.point,
+                pointBorderColor: D.pointBdr,
                 pointBorderWidth: 1,
                 pointRadius: 4,
                 pointHoverRadius: 6,
-                tension: 0.4,
-                fill: true
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: D.line,
+                pointHoverBorderWidth: 2,
+                tension: 0.42,
+                fill: true,
+                borderWidth: 2
             }]
         },
         options: {
             responsive: true,
-            animation: { duration: 350, easing: 'easeInOutQuart' },
+            animation: { duration: 500, easing: 'easeInOutQuart' },
+            interaction: { mode: 'index', intersect: false },
             scales: {
                 y: {
-                    min: minVal - padding,
-                    max: maxVal + padding,
-                    grid:   { color: DARK.grid,       drawBorder: false },
-                    border: { color: DARK.gridBorder, dash: [2,4] },
-                    ticks:  { color: DARK.tick, font: { size: 11 },
+                    min: minV - pad, max: maxV + pad,
+                    grid:   { color: D.grid, drawBorder: false },
+                    border: { dash: [3,5], color: 'transparent' },
+                    ticks:  { color: D.tick, font: { size: 11 },
                               callback: v => Number(v).toFixed(0) }
                 },
                 x: {
-                    grid:   { color: DARK.grid, drawBorder: false },
-                    border: { color: DARK.gridBorder },
+                    grid:   { color: 'rgba(255,255,255,0.03)', drawBorder: false },
+                    border: { color: 'transparent' },
                     title:  { display: true, text: 'Sample Index',
-                              font: { size: 11 }, color: DARK.tick },
-                    ticks:  { color: DARK.tick, font: { size: 11 } }
+                              font: { size: 10.5 }, color: D.tick },
+                    ticks:  { color: D.tick, font: { size: 11 } }
                 }
             },
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: 'rgba(28,28,30,0.95)',
+                    backgroundColor: 'rgba(22,22,24,0.96)',
                     titleColor: '#fff',
-                    bodyColor: '#ebebf5',
+                    bodyColor:  'rgba(235,235,245,0.8)',
                     borderColor: 'rgba(255,255,255,0.1)',
                     borderWidth: 1,
-                    padding: 10,
-                    cornerRadius: 8,
-                    callbacks: { label: ctx => ` ${ctx.parsed.y.toFixed(0)}` }
+                    padding: 11,
+                    cornerRadius: 10,
+                    displayColors: false,
+                    callbacks: {
+                        title: items => `Sample #${items[0].label}`,
+                        label: item  => ` ${Number(item.raw).toFixed(0)}`
+                    }
                 },
                 annotation: {
                     annotations: {
-                        uslLine: {
+                        usl: {
                             type: 'line', yMin: usl, yMax: usl,
-                            borderColor: DARK.usl, borderWidth: 1.5,
-                            borderDash: [5, 5],
-                            label: {
-                                display: true,
-                                content: `USL: ${usl.toFixed(0)}`,
-                                position: 'start',
-                                backgroundColor: 'rgba(255,69,58,0.85)',
-                                color: DARK.annotation.text,
-                                font: { size: 11, weight: 'bold' },
-                                padding: DARK.annotation.padding,
-                                borderRadius: DARK.annotation.radius
-                            }
+                            borderColor: D.uslColor, borderWidth: 1.5, borderDash: [5,5],
+                            label: { display: true, content: `USL: ${usl.toFixed(0)}`,
+                                position: 'start', backgroundColor: 'rgba(255,69,58,0.88)',
+                                color: D.annText, font: { size: 11, weight: 'bold' },
+                                padding: D.annPad, borderRadius: D.annRad }
                         },
-                        lslLine: {
+                        lsl: {
                             type: 'line', yMin: lsl, yMax: lsl,
-                            borderColor: DARK.lsl, borderWidth: 1.5,
-                            borderDash: [5, 5],
-                            label: {
-                                display: true,
-                                content: `LSL: ${lsl.toFixed(0)}`,
-                                position: 'start',
-                                backgroundColor: 'rgba(255,69,58,0.85)',
-                                color: DARK.annotation.text,
-                                font: { size: 11, weight: 'bold' },
-                                padding: DARK.annotation.padding,
-                                borderRadius: DARK.annotation.radius
-                            }
+                            borderColor: D.uslColor, borderWidth: 1.5, borderDash: [5,5],
+                            label: { display: true, content: `LSL: ${lsl.toFixed(0)}`,
+                                position: 'start', backgroundColor: 'rgba(255,69,58,0.88)',
+                                color: D.annText, font: { size: 11, weight: 'bold' },
+                                padding: D.annPad, borderRadius: D.annRad }
                         },
-                        meanLine: {
+                        mean: {
                             type: 'line', yMin: mean, yMax: mean,
                             borderColor: '#30d158', borderWidth: 2,
-                            label: {
-                                display: true,
-                                content: `Mean: ${mean.toFixed(0)}`,
-                                position: 'end',
-                                backgroundColor: 'rgba(48,209,88,0.9)',
-                                color: '#000',
-                                font: { size: 11, weight: 'bold' },
-                                padding: DARK.annotation.padding,
-                                borderRadius: DARK.annotation.radius
-                            }
+                            label: { display: true, content: `Mean: ${mean.toFixed(0)}`,
+                                position: 'end', backgroundColor: 'rgba(48,209,88,0.92)',
+                                color: '#000', font: { size: 11, weight: 'bold' },
+                                padding: D.annPad, borderRadius: D.annRad }
                         }
                     }
                 }
@@ -247,16 +247,22 @@ function buildChart(canvasId, values, lsl, usl, axis) {
         }
     });
 
-    if (axis === 'X') chartX = instance;
-    else              chartY = instance;
+    if (axis === 'X') chartX = inst;
+    else              chartY = inst;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  MODAL
+//  MODAL HELPERS
 // ══════════════════════════════════════════════════════════════════════════════
 function openPDFModal() {
+    // Pre-fill date with today
+    const dateInput = document.getElementById('fi-date');
+    if (!dateInput.value) {
+        const today = new Date();
+        dateInput.value = today.toISOString().slice(0, 10);
+    }
     document.getElementById('pdf-modal').style.display = 'flex';
-    setTimeout(() => document.getElementById('fi-customer').focus(), 50);
+    setTimeout(() => document.getElementById('fi-customer').focus(), 60);
 }
 
 function closePDFModal() {
@@ -264,427 +270,440 @@ function closePDFModal() {
 }
 
 function handleOverlayClick(e) {
-    if (e.target === document.getElementById('pdf-modal')) closePDFModal();
+    if (e.target.id === 'pdf-modal') closePDFModal();
+}
+
+function exportPDF() { openPDFModal(); }
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  LOADING
+// ══════════════════════════════════════════════════════════════════════════════
+function showLoading(msg = 'Cargando…') {
+    document.getElementById('loading-text').textContent = msg;
+    document.getElementById('loading-overlay').style.display = 'flex';
+}
+function hideLoading() {
+    document.getElementById('loading-overlay').style.display = 'none';
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PDF GENERATION  (jsPDF + autoTable)
+//  PDF GENERATION — renders a report in a new window and triggers print
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** Convert hex (#rrggbb or #rgb) to [r,g,b] for jsPDF */
-function hexRGB(hex) {
-    hex = hex.replace('#', '');
-    if (hex.length === 3) hex = hex.split('').map(h => h + h).join('');
-    return [parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16)];
-}
-
-/** Draw chart canvas onto a white backing and return PNG data URL */
-function chartToLightDataURL(canvas) {
-    const off = document.createElement('canvas');
-    off.width  = canvas.width;
-    off.height = canvas.height;
-    const ctx  = off.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, off.width, off.height);
-    ctx.drawImage(canvas, 0, 0);
-    return off.toDataURL('image/png');
-}
-
-/** Build a temp off-screen chart (light theme) for a mag type and return PNG */
-async function buildLightChartPNG(values, lsl, usl, label) {
+/** Render a Chart.js chart off-screen (light theme) and return PNG data-URL */
+function buildLightChartPNG(values, lsl, usl, axisLabel) {
     return new Promise(resolve => {
         const canvas = document.createElement('canvas');
         canvas.width  = 900;
-        canvas.height = 320;
-        canvas.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+        canvas.height = 300;
+        Object.assign(canvas.style, { position:'fixed', top:'-9999px', left:'-9999px' });
         document.body.appendChild(canvas);
 
-        const mean    = values.reduce((a, b) => a + b, 0) / Math.max(1, values.length);
-        const minV    = Math.min(...values, lsl);
-        const maxV    = Math.max(...values, usl);
-        const padding = (maxV - minV) * 0.2;
+        const mean = values.reduce((a,b) => a+b,0) / Math.max(1, values.length);
+        const minV = Math.min(...values, lsl);
+        const maxV = Math.max(...values, usl);
+        const pad  = (maxV - minV) * 0.2;
 
         const chart = new Chart(canvas.getContext('2d'), {
             type: 'line',
             data: {
-                labels: values.map((_, i) => i + 1),
+                labels: values.map((_,i) => i+1),
                 datasets: [{
                     data: values,
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59,130,246,0.08)',
-                    pointBackgroundColor: '#3b82f6',
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37,99,235,0.07)',
+                    pointBackgroundColor: '#2563eb',
                     pointRadius: 3,
-                    tension: 0.4,
-                    fill: true
+                    tension: 0.42,
+                    fill: true,
+                    borderWidth: 2
                 }]
             },
             options: {
-                animation: {
-                    duration: 0,
-                    onComplete: () => {
-                        const off = document.createElement('canvas');
-                        off.width  = canvas.width;
-                        off.height = canvas.height;
-                        const ctx  = off.getContext('2d');
-                        ctx.fillStyle = '#ffffff';
-                        ctx.fillRect(0, 0, off.width, off.height);
-                        ctx.drawImage(canvas, 0, 0);
-                        const dataURL = off.toDataURL('image/png');
-                        chart.destroy();
-                        document.body.removeChild(canvas);
-                        resolve(dataURL);
-                    }
-                },
+                animation: { duration: 0 },
                 responsive: false,
                 scales: {
                     y: {
-                        min: minV - padding,
-                        max: maxV + padding,
-                        grid: { color: '#f0f0f0' },
+                        min: minV - pad, max: maxV + pad,
+                        grid:  { color: '#f0f0f0' },
                         ticks: { color: '#555', font: { size: 10 },
                                  callback: v => Number(v).toFixed(0) }
                     },
                     x: {
-                        grid: { color: '#f0f0f0' },
+                        grid:  { color: '#f5f5f5' },
                         ticks: { color: '#555', font: { size: 10 } },
-                        title: { display: true, text: label, font: { size: 11 }, color: '#666' }
+                        title: { display: true, text: axisLabel, font: { size: 11 }, color: '#666' }
                     }
                 },
                 plugins: {
                     legend: { display: false },
                     annotation: {
                         annotations: {
-                            uslL: {
-                                type:'line', yMin:usl, yMax:usl,
-                                borderColor:'rgba(220,38,38,0.7)', borderWidth:1.5, borderDash:[5,5],
-                                label:{ display:true, content:`USL: ${usl.toFixed(0)}`,
-                                    position:'start', backgroundColor:'rgba(220,38,38,0.85)',
-                                    color:'#fff', font:{size:10,weight:'bold'}, padding:{x:5,y:3}, borderRadius:4 }
-                            },
-                            lslL: {
-                                type:'line', yMin:lsl, yMax:lsl,
-                                borderColor:'rgba(220,38,38,0.7)', borderWidth:1.5, borderDash:[5,5],
-                                label:{ display:true, content:`LSL: ${lsl.toFixed(0)}`,
-                                    position:'start', backgroundColor:'rgba(220,38,38,0.85)',
-                                    color:'#fff', font:{size:10,weight:'bold'}, padding:{x:5,y:3}, borderRadius:4 }
-                            },
-                            meanL: {
-                                type:'line', yMin:mean, yMax:mean,
-                                borderColor:'rgba(22,163,74,0.9)', borderWidth:2,
-                                label:{ display:true, content:`Mean: ${mean.toFixed(0)}`,
-                                    position:'end', backgroundColor:'rgba(22,163,74,0.9)',
-                                    color:'#fff', font:{size:10,weight:'bold'}, padding:{x:5,y:3}, borderRadius:4 }
-                            }
+                            uslL: { type:'line', yMin:usl, yMax:usl,
+                                borderColor:'rgba(220,38,38,.75)', borderWidth:1.5, borderDash:[5,5],
+                                label:{ display:true, content:`USL: ${usl.toFixed(0)}`, position:'start',
+                                    backgroundColor:'rgba(220,38,38,.85)', color:'#fff',
+                                    font:{size:10,weight:'bold'}, padding:{x:5,y:3}, borderRadius:4 } },
+                            lslL: { type:'line', yMin:lsl, yMax:lsl,
+                                borderColor:'rgba(220,38,38,.75)', borderWidth:1.5, borderDash:[5,5],
+                                label:{ display:true, content:`LSL: ${lsl.toFixed(0)}`, position:'start',
+                                    backgroundColor:'rgba(220,38,38,.85)', color:'#fff',
+                                    font:{size:10,weight:'bold'}, padding:{x:5,y:3}, borderRadius:4 } },
+                            meanL: { type:'line', yMin:mean, yMax:mean,
+                                borderColor:'rgba(22,163,74,.9)', borderWidth:2,
+                                label:{ display:true, content:`Mean: ${mean.toFixed(0)}`, position:'end',
+                                    backgroundColor:'rgba(22,163,74,.9)', color:'#fff',
+                                    font:{size:10,weight:'bold'}, padding:{x:5,y:3}, borderRadius:4 } }
                         }
                     }
                 }
             }
         });
+
+        // Wait 3 frames for Chart.js to finish drawing
+        requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+            const off = document.createElement('canvas');
+            off.width  = canvas.width;
+            off.height = canvas.height;
+            const ctx  = off.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, off.width, off.height);
+            ctx.drawImage(canvas, 0, 0);
+            const url = off.toDataURL('image/png');
+            chart.destroy();
+            canvas.remove();
+            resolve(url);
+        })));
     });
 }
 
-/** Human-readable mag names for the PDF report */
-function magDisplayName(mag) {
-    return mag === 'High Mag (M11)' ? 'High Magnification (M11)'
-         : mag === 'Low Mag (M15)'  ? 'Low Magnification (M15)'
-         :                            'Low Magnification (M19)';
+/** Escape HTML entities for safe embedding */
+function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                          .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+/** Convert a hex color to CSS rgba with given alpha for the PDF table */
+function hexAlpha(hex, a) {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+}
+
+/** Human-readable names matching the report image */
+function magName(mag) {
+    return { 'High Mag (M11)': 'High Magnification (M11)',
+             'Low Mag (M15)' : 'Low Magnification (M15)',
+             'Low Mag (M19)' : 'Low Magnification (M19)' }[mag] || mag;
+}
+
+/** Build the complete report HTML document */
+function buildReportHTML(info, charts, logoDataURL) {
+    const magList = ['High Mag (M11)', 'Low Mag (M15)', 'Low Mag (M19)'];
+
+    // ── Status colors matching the PDF reference image (light palette)
+    const STATUS_LIGHT = {
+        Excellent:  { bg:'#16a34a', text:'#fff' },
+        Optimal:    { bg:'#0284c7', text:'#fff' },
+        Good:       { bg:'#22c55e', text:'#000' },
+        Acceptable: { bg:'#eab308', text:'#000' },
+        Bad:        { bg:'#dc2626', text:'#fff' },
+        Terrible:   { bg:'#7f1d1d', text:'#fff' },
+    };
+
+    // ── Build stats for a mag type (returns {xSt, ySt, xCpk, yCpk})
+    function magStats(mag) {
+        const data  = allLogData.filter(d => d.magType === mag);
+        const lim   = limits[mag];
+        const xVals = data.map(d => d.x);
+        const yVals = data.map(d => d.y);
+        const xSt   = calcStats(xVals);
+        const ySt   = calcStats(yVals);
+        const xCpk  = calcCPK(xSt.mean, xSt.stdDev, lim.xLSL, lim.xUSL);
+        const yCpk  = calcCPK(ySt.mean, ySt.stdDev, lim.yLSL, lim.yUSL);
+        const nd    = data.length === 0;
+        const fmt   = (v, d=0) => nd ? 'N/A' : Number(v).toFixed(d);
+        const stBadge = (cpkVal) => {
+            if (nd) return '<td colspan="1">—</td>';
+            const s   = getStatus(cpkVal);
+            const sc  = STATUS_LIGHT[s.text] || { bg: s.bg, text: s.color };
+            return `<td class="badge-cell" style="background:${sc.bg};color:${sc.text}">${s.text}</td>`;
+        };
+        return { xSt, ySt, xCpk, yCpk, lim, nd, fmt, stBadge };
+    }
+
+    // ── Mag section rows HTML
+    const magSections = magList.map(mag => {
+        const { xSt, ySt, xCpk, yCpk, lim, nd, fmt, stBadge } = magStats(mag);
+        return `
+        <div class="mag-section">
+          <div class="mag-title">${magName(mag)}</div>
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th class="lbl-col"></th>
+                <th colspan="2" class="axis-head">X-ray Spot (X)</th>
+                <th colspan="2" class="axis-head">X-ray Spot (Y)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="row-lbl">Standard Deviation</td>
+                <td colspan="2" class="val">${fmt(xSt.stdDev, 4)}</td>
+                <td colspan="2" class="val">${fmt(ySt.stdDev, 4)}</td>
+              </tr>
+              <tr>
+                <td class="row-lbl">Mean</td>
+                <td colspan="2" class="val">${fmt(xSt.mean)}</td>
+                <td colspan="2" class="val">${fmt(ySt.mean)}</td>
+              </tr>
+              <tr>
+                <td class="row-lbl">USL</td>
+                <td colspan="2" class="val">${nd ? 'N/A' : lim.xUSL.toFixed(0)}</td>
+                <td colspan="2" class="val">${nd ? 'N/A' : lim.yUSL.toFixed(0)}</td>
+              </tr>
+              <tr>
+                <td class="row-lbl">LSL</td>
+                <td colspan="2" class="val">${nd ? 'N/A' : lim.xLSL.toFixed(0)}</td>
+                <td colspan="2" class="val">${nd ? 'N/A' : lim.yLSL.toFixed(0)}</td>
+              </tr>
+              <tr>
+                <td class="row-lbl">Cp</td>
+                <td class="val mono">${fmt(xCpk.cp, 12)}</td>
+                ${stBadge(xCpk.cp)}
+                <td class="val mono">${fmt(yCpk.cp, 12)}</td>
+                ${stBadge(yCpk.cp)}
+              </tr>
+              <tr>
+                <td class="row-lbl">Cpk</td>
+                <td class="val mono">${fmt(xCpk.cpk, 12)}</td>
+                ${stBadge(xCpk.cpk)}
+                <td class="val mono">${fmt(yCpk.cpk, 12)}</td>
+                ${stBadge(yCpk.cpk)}
+              </tr>
+            </tbody>
+          </table>
+        </div>`;
+    }).join('');
+
+    // ── Charts HTML
+    const chartsHTML = magList.map(mag => {
+        const c = charts[mag];
+        if (!c) return '';
+        return `
+        <div class="chart-block">
+          <div class="chart-block-title">${magName(mag)}</div>
+          <div class="chart-row">
+            <div class="chart-col">
+              <p class="chart-lbl">X-ray Spot (X)</p>
+              <img src="${c.x}" class="chart-img" alt="Chart X">
+            </div>
+            <div class="chart-col">
+              <p class="chart-lbl">X-ray Spot (Y)</p>
+              <img src="${c.y}" class="chart-img" alt="Chart Y">
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    const logoTag = logoDataURL
+        ? `<img src="${logoDataURL}" class="rep-logo" alt="Logo">`
+        : `<div class="rep-logo-text">SMT</div>`;
+
+    // Format date
+    const dateObj = info.date ? new Date(info.date + 'T12:00:00') : new Date();
+    const dateStr = dateObj.toLocaleDateString('es-MX',
+        { day:'2-digit', month:'2-digit', year:'numeric' });
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>CPK VITROX Report — ${esc(info.customer)}</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:Arial,Helvetica,sans-serif;font-size:9.5pt;color:#111;background:#fff;}
+  @page{margin:14mm 16mm;size:A4;}
+
+  /* ── HEADER ── */
+  .rep-header{display:flex;justify-content:space-between;align-items:flex-start;
+    padding-bottom:10px;border-bottom:2.5px solid #111;margin-bottom:12px;}
+  .rep-logo{height:44px;object-fit:contain;}
+  .rep-logo-text{font-size:20px;font-weight:900;color:#1e40af;
+    border:2.5px solid #1e40af;padding:3px 10px;border-radius:4px;}
+  .rep-header-right{text-align:right;}
+  .rep-title{font-size:20pt;font-weight:900;letter-spacing:-.02em;color:#111;}
+  .rep-meta{margin-top:6px;display:flex;flex-direction:column;gap:2px;align-items:flex-end;}
+  .rep-meta-row{font-size:9pt;color:#444;}
+  .rep-meta-row strong{color:#111;}
+
+  /* ── CUSTOMER TABLE ── */
+  .info-table{border-collapse:collapse;margin-bottom:14px;}
+  .info-table td{padding:4px 10px;border:1px solid #ccc;font-size:9.5pt;}
+  .info-table td:first-child{background:#f5f5f5;font-weight:700;width:115px;color:#222;}
+
+  /* ── MAG SECTIONS ── */
+  .mag-section{margin-bottom:12px;page-break-inside:avoid;}
+  .mag-title{text-align:center;font-size:13pt;font-weight:800;
+    border:1.5px solid #222;padding:5px;background:#f8f8f8;letter-spacing:-.01em;}
+  .stats-table{width:100%;border-collapse:collapse;font-size:8.5pt;}
+  .stats-table th{background:#efefef;border:1px solid #ccc;padding:4px 8px;
+    text-align:center;font-size:9pt;font-weight:700;}
+  .axis-head{background:#e8e8e8;}
+  .lbl-col{width:105px;}
+  .stats-table td{border:1px solid #d4d4d4;padding:3.5px 8px;}
+  .row-lbl{text-align:right;background:#fafafa;font-size:8.5pt;color:#333;}
+  .val{text-align:right;font-variant-numeric:tabular-nums;}
+  .mono{font-family:'Courier New',monospace;font-size:8pt;}
+  .badge-cell{text-align:center;font-weight:700;font-size:8pt;letter-spacing:.03em;width:68px;}
+
+  /* ── CRITERIA TABLE ── */
+  .criteria-wrap{margin-top:12px;page-break-inside:avoid;}
+  .criteria-title{font-size:9pt;font-weight:700;margin-bottom:4px;color:#444;text-transform:uppercase;letter-spacing:.05em;}
+  .criteria-table{border-collapse:collapse;}
+  .criteria-table td{border:1px solid #ccc;padding:3px 10px;font-size:9pt;}
+  .criteria-table td:first-child{background:#fafafa;width:140px;}
+  .criteria-table td:last-child{font-weight:700;text-align:center;width:80px;}
+
+  /* ── CHARTS PAGE ── */
+  .charts-page{page-break-before:always;}
+  .charts-page-title{text-align:center;font-size:16pt;font-weight:800;
+    padding:8px;border-bottom:2px solid #111;margin-bottom:16px;}
+  .chart-block{margin-bottom:20px;page-break-inside:avoid;}
+  .chart-block-title{font-size:11pt;font-weight:700;background:#f0f0f0;
+    border:1px solid #ddd;padding:5px 10px;text-align:center;margin-bottom:8px;}
+  .chart-row{display:flex;gap:12px;}
+  .chart-col{flex:1;}
+  .chart-lbl{font-size:8.5pt;color:#666;margin-bottom:4px;font-style:italic;}
+  .chart-img{width:100%;height:auto;border:1px solid #e5e5e5;border-radius:3px;}
+
+  /* ── FOOTER ── */
+  .rep-footer{position:fixed;bottom:8mm;left:0;right:0;text-align:center;
+    font-size:8pt;color:#999;border-top:1px solid #ddd;padding-top:4px;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="rep-header">
+  <div>${logoTag}</div>
+  <div class="rep-header-right">
+    <div class="rep-title">CPK VITROX Report</div>
+    <div class="rep-meta">
+      <div class="rep-meta-row"><strong>Date:</strong> ${dateStr}</div>
+      <div class="rep-meta-row"><strong>Customer:</strong> ${esc(info.customer) || '—'}</div>
+      <div class="rep-meta-row"><strong>S/N:</strong> ${esc(info.serial) || '—'}</div>
+    </div>
+  </div>
+</div>
+
+<!-- CUSTOMER INFO -->
+<table class="info-table">
+  <tr><td>Customer Info.</td><td>${esc(info.customer)}</td></tr>
+  <tr><td>Machine Model</td><td>${esc(info.model)}</td></tr>
+  <tr><td>System S/N</td><td>${esc(info.serial)}</td></tr>
+  <tr><td>SMTo Engineer</td><td>${esc(info.engineer)}</td></tr>
+</table>
+
+<!-- MAG SECTIONS -->
+${magSections}
+
+<!-- CPK CRITERIA -->
+<div class="criteria-wrap">
+  <div class="criteria-title">CPK Reference</div>
+  <table class="criteria-table">
+    <tr><td>CPK &gt;= 2.0</td>          <td style="background:#16a34a;color:#fff">Excellent</td></tr>
+    <tr><td>2.0 &gt; CPK &gt;= 1.67</td><td style="background:#0284c7;color:#fff">Optimal</td></tr>
+    <tr><td>1.67 &gt; CPK &gt;= 1.33</td><td style="background:#22c55e;color:#000">Good</td></tr>
+    <tr><td>1.33 &gt; CPK &gt;= 1.0</td><td style="background:#eab308;color:#000">Acceptable</td></tr>
+    <tr><td>1.0 &gt; CPK &gt;= 0.67</td><td style="background:#dc2626;color:#fff">Bad</td></tr>
+    <tr><td>0.67 &gt; CPK</td>           <td style="background:#7f1d1d;color:#fff">Terrible</td></tr>
+  </table>
+</div>
+
+<!-- CHARTS PAGE -->
+<div class="charts-page">
+  <div class="charts-page-title">Process Charts</div>
+  ${chartsHTML}
+</div>
+
+<div class="rep-footer">CPK VITROX — ${esc(info.customer) || 'Report'} — ${dateStr}</div>
+
+</body>
+</html>`;
+}
+
+// ── Main PDF entry point ──────────────────────────────────────────────────────
 async function generatePDF() {
     closePDFModal();
 
-    // Customer info
     const info = {
-        customer : document.getElementById('fi-customer').value  || '—',
-        model    : document.getElementById('fi-model').value     || '—',
-        serial   : document.getElementById('fi-serial').value    || '—',
-        engineer : document.getElementById('fi-engineer').value  || '—'
+        date:     document.getElementById('fi-date').value,
+        customer: document.getElementById('fi-customer').value.trim(),
+        model:    document.getElementById('fi-model').value.trim(),
+        serial:   document.getElementById('fi-serial').value.trim(),
+        engineer: document.getElementById('fi-engineer').value.trim(),
     };
 
-    const { jsPDF } = window.jspdf;
-    const doc  = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pw   = doc.internal.pageSize.getWidth();   // 210
-    const ph   = doc.internal.pageSize.getHeight();  // 297
-    const ml   = 15;   // margin left
-    const mr   = 15;   // margin right
-    const cw   = pw - ml - mr;  // content width
-    let   y    = 14;
+    showLoading('Renderizando gráficas…');
 
-    /* ── Helpers ─────────────────────────────────────────────────────── */
-    const setFont = (size, style = 'normal', color = [30,30,30]) => {
-        doc.setFontSize(size);
-        doc.setFont('helvetica', style);
-        doc.setTextColor(...color);
-    };
+    // Build light-theme chart PNGs for all mag types that have data
+    const charts   = {};
+    const magList  = ['High Mag (M11)', 'Low Mag (M15)', 'Low Mag (M19)'];
+    for (const mag of magList) {
+        const data = allLogData.filter(d => d.magType === mag);
+        if (data.length === 0) continue;
+        const lim = limits[mag];
+        charts[mag] = {
+            x: await buildLightChartPNG(data.map(d => d.x), lim.xLSL, lim.xUSL, 'X-ray Spot (X)'),
+            y: await buildLightChartPNG(data.map(d => d.y), lim.yLSL, lim.yUSL, 'X-ray Spot (Y)')
+        };
+    }
 
-    const hLine = (yPos, color = [200,200,200]) => {
-        doc.setDrawColor(...color);
-        doc.setLineWidth(0.3);
-        doc.line(ml, yPos, pw - mr, yPos);
-    };
-
-    /* ── LOGO ─────────────────────────────────────────────────────────── */
+    // Get logo as data URL
+    let logoDataURL = null;
     const logoEl = document.getElementById('smt-logo');
-    let logoLoaded = false;
     if (logoEl && logoEl.complete && logoEl.naturalWidth > 0) {
         try {
             const lc = document.createElement('canvas');
             lc.width  = logoEl.naturalWidth;
             lc.height = logoEl.naturalHeight;
             lc.getContext('2d').drawImage(logoEl, 0, 0);
-            const logoData = lc.toDataURL('image/png');
-            const lh = 12;
-            const lw = lh * (logoEl.naturalWidth / logoEl.naturalHeight);
-            doc.addImage(logoData, 'PNG', ml, y, lw, lh);
-            logoLoaded = true;
-        } catch (_) {}
+            logoDataURL = lc.toDataURL('image/png');
+        } catch(_) {}
     }
 
-    /* Report title (top right) */
-    setFont(20, 'bold', [20,20,20]);
-    doc.text('CPK Report', pw - mr, y + 8, { align: 'right' });
+    showLoading('Abriendo reporte…');
 
-    y += logoLoaded ? 18 : 12;
-    hLine(y, [180,180,180]);
-    y += 6;
+    const html    = buildReportHTML(info, charts, logoDataURL);
+    const repWin  = window.open('', '_blank', 'width=900,height=750,menubar=no,toolbar=no');
 
-    /* ── CUSTOMER INFO TABLE ──────────────────────────────────────────── */
-    doc.autoTable({
-        startY: y,
-        head: [],
-        body: [
-            ['Customer Info.',  info.customer],
-            ['Machine Model',   info.model],
-            ['System S/N',      info.serial],
-            ['SMTo Engineer',   info.engineer]
-        ],
-        margin: { left: ml, right: pw - mr - 120 },
-        tableWidth: 120,
-        styles: {
-            fontSize: 10,
-            cellPadding: 3.5,
-            lineColor: [180,180,180],
-            lineWidth: 0.25,
-            fontStyle: 'normal'
-        },
-        columnStyles: {
-            0: { fontStyle: 'bold', cellWidth: 42, fillColor: [245,245,245] },
-            1: { cellWidth: 78 }
-        },
-        theme: 'grid'
-    });
-
-    y = doc.lastAutoTable.finalY + 10;
-
-    /* ── DATE ─────────────────────────────────────────────────────────── */
-    setFont(9, 'normal', [150,150,150]);
-    const now = new Date();
-    doc.text(
-        `Generated: ${now.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}  ${now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}`,
-        pw - mr, doc.lastAutoTable.finalY - 3, { align: 'right' }
-    );
-
-    /* ── MAGNIFICATION SECTIONS ───────────────────────────────────────── */
-    const magList = ['High Mag (M11)', 'Low Mag (M15)', 'Low Mag (M19)'];
-
-    for (const mag of magList) {
-        const data   = allLogData.filter(d => d.magType === mag);
-        const lim    = limits[mag];
-        const xVals  = data.map(d => d.x);
-        const yVals  = data.map(d => d.y);
-        const xSt    = calcStats(xVals);
-        const ySt    = calcStats(yVals);
-        const xCpk   = calcCPK(xSt.mean, xSt.stdDev, lim.xLSL, lim.xUSL);
-        const yCpk   = calcCPK(ySt.mean, ySt.stdDev, lim.yLSL, lim.yUSL);
-        const xStat  = getStatus(xCpk.cpk);
-        const yStat  = getStatus(yCpk.cpk);
-        const noData = data.length === 0;
-
-        /* Section title */
-        if (y > ph - 100) { doc.addPage(); y = 15; }
-
-        setFont(14, 'bold', [20,20,20]);
-        doc.text(magDisplayName(mag), pw / 2, y, { align: 'center' });
-        y += 8;
-
-        const fmt = (v, dec = 0) => noData ? 'N/A' : v.toFixed(dec);
-
-        doc.autoTable({
-            startY: y,
-            margin: { left: ml, right: mr },
-            tableWidth: cw,
-            head: [[
-                { content: '',              styles: { cellWidth: 38 } },
-                { content: 'X-ray Spot (X)', colSpan: 2, styles: { halign: 'center', fontStyle: 'bold' } },
-                { content: 'X-ray Spot (Y)', colSpan: 2, styles: { halign: 'center', fontStyle: 'bold' } }
-            ]],
-            body: [
-                ['Standard Deviation',
-                    fmt(xSt.stdDev, 4), '',
-                    fmt(ySt.stdDev, 4), ''],
-                ['Mean',
-                    fmt(xSt.mean),     '',
-                    fmt(ySt.mean),     ''],
-                ['USL',
-                    noData ? 'N/A' : lim.xUSL.toFixed(0), '',
-                    noData ? 'N/A' : lim.yUSL.toFixed(0), ''],
-                ['LSL',
-                    noData ? 'N/A' : lim.xLSL.toFixed(0), '',
-                    noData ? 'N/A' : lim.yLSL.toFixed(0), ''],
-                ['Cp',
-                    fmt(xCpk.cp, 12), noData ? '' : xStat.text,
-                    fmt(yCpk.cp, 12), noData ? '' : yStat.text],
-                ['Cpk',
-                    fmt(xCpk.cpk, 12), noData ? '' : xStat.text,
-                    fmt(yCpk.cpk, 12), noData ? '' : yStat.text]
-            ],
-            styles: {
-                fontSize: 8.5,
-                cellPadding: 3,
-                lineColor: [200,200,200],
-                lineWidth: 0.25
-            },
-            headStyles: {
-                fillColor: [240,240,240],
-                textColor: [30,30,30],
-                fontStyle: 'bold',
-                halign: 'center',
-                fontSize: 9
-            },
-            columnStyles: {
-                0: { fontStyle: 'bold', fillColor: [248,248,248], cellWidth: 38, halign: 'right' },
-                1: { halign: 'right',   cellWidth: (cw - 38) * 0.30 },
-                2: { halign: 'center',  cellWidth: (cw - 38) * 0.195 },
-                3: { halign: 'right',   cellWidth: (cw - 38) * 0.30 },
-                4: { halign: 'center',  cellWidth: (cw - 38) * 0.195 }
-            },
-            theme: 'grid',
-            /* Color the Cp/Cpk status badge cells */
-            didParseCell: (data) => {
-                if (noData) return;
-                const isStatusCol = (data.column.index === 2 || data.column.index === 4);
-                const isValueRow  = (data.row.index >= 4);   // Cp & Cpk rows (body index)
-                if (data.section === 'body' && isStatusCol && isValueRow && data.cell.raw) {
-                    const isX   = data.column.index === 2;
-                    const isCp  = data.row.index === 4;
-                    const cpkV  = isX ? (isCp ? xCpk.cp : xCpk.cpk) : (isCp ? yCpk.cp : yCpk.cpk);
-                    const st    = getStatus(cpkV);
-                    data.cell.styles.fillColor  = hexRGB(st.bg);
-                    data.cell.styles.textColor  = st.color === '#fff' ? [255,255,255] : [0,0,0];
-                    data.cell.styles.fontStyle  = 'bold';
-                    data.cell.styles.halign     = 'center';
-                }
-            }
-        });
-
-        y = doc.lastAutoTable.finalY + 8;
+    if (!repWin) {
+        hideLoading();
+        alert('Por favor permite las ventanas emergentes para descargar el PDF.');
+        return;
     }
 
-    /* ── CPK CRITERIA TABLE ───────────────────────────────────────────── */
-    if (y > ph - 60) { doc.addPage(); y = 15; }
+    repWin.document.open();
+    repWin.document.write(html);
+    repWin.document.close();
 
-    setFont(9, 'bold', [80,80,80]);
-    doc.text('CPK Criteria', ml, y);
-    y += 4;
+    hideLoading();
 
-    const criteria = [
-        ['CPK >= 2.0',          'Excellent',  [34,197,94],    [0,0,0]],
-        ['2.0 > CPK >= 1.67',   'Optimal',    [50,173,230],   [0,0,0]],
-        ['1.67 > CPK >= 1.33',  'Good',       [134,239,172],  [0,0,0]],
-        ['1.33 > CPK >= 1.0',   'Acceptable', [234,179,8],    [0,0,0]],
-        ['1.0 > CPK >= 0.67',   'Bad',        [239,68,68],    [255,255,255]],
-        ['0.67 > CPK',          'Terrible',   [127,29,29],    [255,255,255]],
-    ];
+    // Wait for images to load then trigger print
+    repWin.onload = () => {
+        setTimeout(() => {
+            repWin.focus();
+            repWin.print();
+        }, 400);
+    };
 
-    doc.autoTable({
-        startY: y,
-        margin: { left: ml },
-        tableWidth: 90,
-        head: [['CPK', 'Principle']],
-        body: criteria.map(c => [c[0], c[1]]),
-        headStyles: {
-            fillColor: [60,60,60],
-            textColor: [255,255,255],
-            fontStyle: 'bold',
-            fontSize: 9,
-            halign: 'center'
-        },
-        styles: { fontSize: 9, cellPadding: 2.5, lineColor: [200,200,200], lineWidth: 0.25 },
-        columnStyles: {
-            0: { cellWidth: 50 },
-            1: { cellWidth: 40, halign: 'center', fontStyle: 'bold' }
-        },
-        theme: 'grid',
-        didParseCell: (data) => {
-            if (data.section === 'body' && data.column.index === 1) {
-                const c = criteria[data.row.index];
-                data.cell.styles.fillColor = c[2];
-                data.cell.styles.textColor = c[3];
-            }
+    // Fallback if onload doesn't fire
+    setTimeout(() => {
+        if (repWin && !repWin.closed) {
+            repWin.focus();
+            repWin.print();
         }
-    });
-
-    y = doc.lastAutoTable.finalY + 12;
-
-    /* ── CHARTS ───────────────────────────────────────────────────────── */
-    doc.addPage();
-    y = 15;
-
-    setFont(14, 'bold', [20,20,20]);
-    doc.text('Process Charts', pw / 2, y, { align: 'center' });
-    y += 8;
-    hLine(y, [200,200,200]);
-    y += 8;
-
-    const chartHeight = 62;  // mm
-    const chartWidth  = cw;
-
-    for (const mag of magList) {
-        const data  = allLogData.filter(d => d.magType === mag);
-        if (data.length === 0) continue;
-
-        const lim   = limits[mag];
-
-        // Section header
-        if (y > ph - chartHeight * 2 - 30) { doc.addPage(); y = 15; }
-
-        setFont(11, 'bold', [40,40,40]);
-        doc.setFillColor(240, 240, 240);
-        doc.roundedRect(ml, y - 4, cw, 9, 2, 2, 'F');
-        doc.text(magDisplayName(mag), pw / 2, y + 2, { align: 'center' });
-        y += 12;
-
-        // X chart
-        setFont(9, 'normal', [100,100,100]);
-        doc.text('X-ray Spot (X)', ml, y);
-        y += 3;
-
-        const xPNG = await buildLightChartPNG(data.map(d => d.x), lim.xLSL, lim.xUSL, 'Sample Index — X');
-        doc.addImage(xPNG, 'PNG', ml, y, chartWidth, chartHeight);
-        y += chartHeight + 6;
-
-        // Y chart
-        doc.text('X-ray Spot (Y)', ml, y);
-        y += 3;
-
-        const yPNG = await buildLightChartPNG(data.map(d => d.y), lim.yLSL, lim.yUSL, 'Sample Index — Y');
-        doc.addImage(yPNG, 'PNG', ml, y, chartWidth, chartHeight);
-        y += chartHeight + 14;
-    }
-
-    /* ── FOOTER on each page ──────────────────────────────────────────── */
-    const totalPages = doc.internal.getNumberOfPages();
-    for (let p = 1; p <= totalPages; p++) {
-        doc.setPage(p);
-        setFont(8, 'normal', [160,160,160]);
-        doc.text(`CPK VITROX Report  •  Page ${p} of ${totalPages}`, pw / 2, ph - 8, { align: 'center' });
-        hLine(ph - 12, [220,220,220]);
-    }
-
-    /* ── SAVE ─────────────────────────────────────────────────────────── */
-    const dateStr = now.toISOString().slice(0,10).replace(/-/g,'');
-    doc.save(`CPK_Report_${info.customer.replace(/\s+/g,'_') || 'VITROX'}_${dateStr}.pdf`);
+    }, 1500);
 }
-
-// Expose exportPDF for button onclick
-function exportPDF() { openPDFModal(); }

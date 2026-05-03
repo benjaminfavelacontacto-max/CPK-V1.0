@@ -5,141 +5,172 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CPK VITROX</title>
     <link rel="stylesheet" href="css/styles.css">
-    <!-- Chart.js + Annotation plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-    <!-- jsPDF + AutoTable for PDF generation -->
-    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 
-    <!-- ═══════════════════════════════ TOP BAR ═══════════════════════════════ -->
-    <header id="topbar">
-        <div class="logo-wrap">
-            <img id="smt-logo" src="assets/SMTLogo.png" alt="SMT"
-                 onerror="this.style.display='none'; document.getElementById('logo-fallback').style.display='flex'">
-            <div id="logo-fallback" class="logo-fallback">SMT</div>
+<!-- ══════════════════════════ TOP BAR ══════════════════════════ -->
+<header id="topbar">
+    <div class="logo-wrap">
+        <img id="smt-logo" src="assets/SMTLogo.png" alt="SMT"
+             onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='flex'">
+        <div id="logo-fallback" class="logo-fallback">SMT</div>
+    </div>
+
+    <div class="topbar-right">
+        <div class="picker-group">
+            <span class="picker-label">Cámara</span>
+            <div class="picker-wrap">
+                <select id="mag-select" class="picker">
+                    <option value="High Mag (M11)">High Mag (M11)</option>
+                    <option value="Low Mag (M15)">Low Mag (M15)</option>
+                    <option value="Low Mag (M19)">Low Mag (M19)</option>
+                </select>
+                <svg class="picker-arrow" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+            </div>
         </div>
 
-        <div class="topbar-controls">
-            <label for="mag-select" class="picker-label">Cámara:</label>
-            <select id="mag-select" class="picker">
-                <option value="High Mag (M11)">High Mag (M11)</option>
-                <option value="Low Mag (M15)">Low Mag (M15)</option>
-                <option value="Low Mag (M19)">Low Mag (M19)</option>
-            </select>
-
-            <button class="btn btn-primary" onclick="document.getElementById('folder-input').click()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/>
-                </svg>
-                Cargar Carpeta
-            </button>
-
-            <button id="pdf-btn" class="btn btn-danger" onclick="openPDFModal()" disabled>
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5z"/>
-                </svg>
-                Descargar PDF
-            </button>
-        </div>
-
-        <input type="file" id="folder-input" webkitdirectory multiple style="display:none">
-    </header>
-
-    <!-- ══════════════════════════════ EMPTY STATE ════════════════════════════ -->
-    <div id="empty-state">
-        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="white">
-            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-        </svg>
-        <h2>Sin Datos Cargados</h2>
         <button class="btn btn-primary" onclick="document.getElementById('folder-input').click()">
-            Cargar Carpeta de Logs
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z"/></svg>
+            Cargar Carpeta
+        </button>
+
+        <button id="pdf-btn" class="btn btn-danger" onclick="openPDFModal()" disabled>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            Descargar PDF
         </button>
     </div>
 
-    <!-- ══════════════════════════════ MAIN CONTENT ═══════════════════════════ -->
-    <div id="main-content" style="display:none">
+    <input type="file" id="folder-input" webkitdirectory multiple style="display:none">
+</header>
 
-        <!-- LEFT: Log Table -->
-        <div id="left-panel">
-            <div class="panel-header" id="log-count">LOGS (0)</div>
-            <div class="table-wrap">
-                <table id="log-table">
-                    <thead>
-                        <tr>
-                            <th>Archivo</th>
-                            <th>X</th>
-                            <th>Y</th>
-                        </tr>
-                    </thead>
-                    <tbody id="log-tbody"></tbody>
-                </table>
-            </div>
+<!-- ══════════════════════════ EMPTY STATE ══════════════════════ -->
+<div id="empty-state">
+    <div class="empty-glow"></div>
+    <div class="empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+            <path d="M22 12H16L14 15H10L8 12H2"/><path d="M5.45 5.11L2 12V18a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/>
+        </svg>
+    </div>
+    <h2>Sin Datos Cargados</h2>
+    <p class="empty-sub">Selecciona una carpeta con archivos .log para comenzar</p>
+    <button class="btn btn-primary btn-lg" onclick="document.getElementById('folder-input').click()">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z"/></svg>
+        Cargar Carpeta de Logs
+    </button>
+</div>
+
+<!-- ══════════════════════════ MAIN CONTENT ══════════════════════ -->
+<div id="main-content" style="display:none">
+
+    <!-- LEFT: Table -->
+    <div id="left-panel">
+        <div class="panel-header">
+            <span id="log-count">LOGS (0)</span>
+            <div class="panel-header-dot"></div>
         </div>
-
-        <!-- RIGHT: Stats + Charts -->
-        <div id="right-panel">
-            <div class="stats-row">
-                <div id="stats-x" class="stats-card"></div>
-                <div id="stats-y" class="stats-card"></div>
-                <div id="legend-card" class="stats-card legend-card"></div>
-            </div>
-            <div class="charts-section">
-                <div class="chart-wrap">
-                    <p class="chart-title">X-ray Spot (X)</p>
-                    <canvas id="chart-x" height="220"></canvas>
-                </div>
-                <div class="chart-wrap">
-                    <p class="chart-title">X-ray Spot (Y)</p>
-                    <canvas id="chart-y" height="220"></canvas>
-                </div>
-            </div>
+        <div class="table-wrap">
+            <table id="log-table">
+                <thead>
+                    <tr>
+                        <th>Archivo</th>
+                        <th>X</th>
+                        <th>Y</th>
+                    </tr>
+                </thead>
+                <tbody id="log-tbody"></tbody>
+            </table>
         </div>
     </div>
 
-    <!-- ═══════════════════════════ CUSTOMER INFO MODAL ══════════════════════ -->
-    <div id="pdf-modal" class="modal-overlay" style="display:none" onclick="handleOverlayClick(event)">
-        <div class="modal">
-            <h2>Información del Reporte</h2>
-            <p class="modal-subtitle">
-                Estos datos aparecerán en la portada del PDF junto con el logo y
-                las estadísticas de las 3 magnificaciones.
-            </p>
+    <!-- RIGHT: Stats + Charts -->
+    <div id="right-panel">
 
-            <div class="modal-form">
-                <div class="form-row">
-                    <label>Customer Info.</label>
-                    <input type="text" id="fi-customer" placeholder="ej. Benchmark Tijuana" autocomplete="off">
+        <!-- Stats cards row -->
+        <div class="stats-row">
+            <div id="stats-x" class="stats-card" data-axis="x"></div>
+            <div id="stats-y" class="stats-card" data-axis="y"></div>
+            <div id="legend-card" class="stats-card legend-card"></div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-section">
+            <div class="chart-wrap">
+                <div class="chart-header">
+                    <span class="chart-title">X-ray Spot <em>(X)</em></span>
+                    <div class="chart-badge" id="badge-x"></div>
                 </div>
-                <div class="form-row">
-                    <label>Machine Model</label>
-                    <input type="text" id="fi-model" placeholder="ej. V810Ai S2 XLT M" autocomplete="off">
+                <canvas id="chart-x" height="220"></canvas>
+            </div>
+            <div class="chart-wrap">
+                <div class="chart-header">
+                    <span class="chart-title">X-ray Spot <em>(Y)</em></span>
+                    <div class="chart-badge" id="badge-y"></div>
                 </div>
-                <div class="form-row">
+                <canvas id="chart-y" height="220"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════ PDF MODAL ════════════════════════ -->
+<div id="pdf-modal" class="modal-overlay" style="display:none" onclick="handleOverlayClick(event)">
+    <div class="modal">
+        <div class="modal-head">
+            <div class="modal-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM13 3.5L18.5 9H13V3.5z"/></svg>
+            </div>
+            <div>
+                <h2>Generar Reporte PDF</h2>
+                <p class="modal-subtitle">La información aparecerá en el encabezado del reporte</p>
+            </div>
+        </div>
+
+        <div class="modal-form">
+            <div class="form-row form-row--half">
+                <div class="form-field">
+                    <label>Fecha</label>
+                    <input type="date" id="fi-date">
+                </div>
+                <div class="form-field">
                     <label>System S/N</label>
-                    <input type="text" id="fi-serial" placeholder="ej. MY13138446XLT" autocomplete="off">
-                </div>
-                <div class="form-row">
-                    <label>SMTo Engineer</label>
-                    <input type="text" id="fi-engineer" placeholder="ej. Juan Cuellar" autocomplete="off">
+                    <input type="text" id="fi-serial" placeholder="MY13138446XLT">
                 </div>
             </div>
-
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closePDFModal()">Cancelar</button>
-                <button class="btn btn-danger" onclick="generatePDF()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-                    </svg>
-                    Generar PDF
-                </button>
+            <div class="form-field">
+                <label>Nombre del Cliente</label>
+                <input type="text" id="fi-customer" placeholder="ej. Benchmark Tijuana">
+            </div>
+            <div class="form-row form-row--half">
+                <div class="form-field">
+                    <label>Machine Model</label>
+                    <input type="text" id="fi-model" placeholder="V810Ai S2 XLT M">
+                </div>
+                <div class="form-field">
+                    <label>SMTo Engineer</label>
+                    <input type="text" id="fi-engineer" placeholder="Juan Cuellar">
+                </div>
             </div>
         </div>
-    </div>
 
-    <script src="js/cpk.js"></script>
-    <script src="js/app.js"></script>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closePDFModal()">Cancelar</button>
+            <button class="btn btn-danger" onclick="generatePDF()">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                Generar PDF
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════ LOADING OVERLAY ══════════════════ -->
+<div id="loading-overlay" style="display:none">
+    <div class="spinner"></div>
+    <p id="loading-text">Generando reporte…</p>
+</div>
+
+<script src="js/cpk.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
