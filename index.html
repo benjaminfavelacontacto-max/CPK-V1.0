@@ -5,9 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CPK VITROX</title>
     <link rel="stylesheet" href="css/styles.css">
-    <!-- Chart.js 4 + Annotation plugin -->
+    <!-- Chart.js + Annotation plugin -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <!-- jsPDF + AutoTable for PDF generation -->
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 
@@ -28,32 +31,28 @@
             </select>
 
             <button class="btn btn-primary" onclick="document.getElementById('folder-input').click()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
-                     fill="currentColor"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2
-                     0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/>
+                </svg>
                 Cargar Carpeta
             </button>
 
-            <button id="pdf-btn" class="btn btn-danger" onclick="exportPDF()" disabled>
-                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
-                     fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2
-                     2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 13h8v1H8v-1zm0 3h8v1H8v-1zm0-6h3v1H8v-1z"/></svg>
+            <button id="pdf-btn" class="btn btn-danger" onclick="openPDFModal()" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5z"/>
+                </svg>
                 Descargar PDF
             </button>
         </div>
 
-        <!-- Hidden folder picker -->
         <input type="file" id="folder-input" webkitdirectory multiple style="display:none">
     </header>
 
     <!-- ══════════════════════════════ EMPTY STATE ════════════════════════════ -->
     <div id="empty-state">
-        <div class="empty-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24"
-                 fill="currentColor" opacity="0.25">
-                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-            </svg>
-        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="white">
+            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+        </svg>
         <h2>Sin Datos Cargados</h2>
         <button class="btn btn-primary" onclick="document.getElementById('folder-input').click()">
             Cargar Carpeta de Logs
@@ -63,7 +62,7 @@
     <!-- ══════════════════════════════ MAIN CONTENT ═══════════════════════════ -->
     <div id="main-content" style="display:none">
 
-        <!-- LEFT: Table -->
+        <!-- LEFT: Log Table -->
         <div id="left-panel">
             <div class="panel-header" id="log-count">LOGS (0)</div>
             <div class="table-wrap">
@@ -82,26 +81,61 @@
 
         <!-- RIGHT: Stats + Charts -->
         <div id="right-panel">
-
-            <!-- Stats row -->
             <div class="stats-row">
                 <div id="stats-x" class="stats-card"></div>
                 <div id="stats-y" class="stats-card"></div>
                 <div id="legend-card" class="stats-card legend-card"></div>
             </div>
-
-            <!-- Charts -->
             <div class="charts-section">
                 <div class="chart-wrap">
                     <p class="chart-title">X-ray Spot (X)</p>
-                    <canvas id="chart-x" height="250"></canvas>
+                    <canvas id="chart-x" height="220"></canvas>
                 </div>
                 <div class="chart-wrap">
                     <p class="chart-title">X-ray Spot (Y)</p>
-                    <canvas id="chart-y" height="250"></canvas>
+                    <canvas id="chart-y" height="220"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════ CUSTOMER INFO MODAL ══════════════════════ -->
+    <div id="pdf-modal" class="modal-overlay" style="display:none" onclick="handleOverlayClick(event)">
+        <div class="modal">
+            <h2>Información del Reporte</h2>
+            <p class="modal-subtitle">
+                Estos datos aparecerán en la portada del PDF junto con el logo y
+                las estadísticas de las 3 magnificaciones.
+            </p>
+
+            <div class="modal-form">
+                <div class="form-row">
+                    <label>Customer Info.</label>
+                    <input type="text" id="fi-customer" placeholder="ej. Benchmark Tijuana" autocomplete="off">
+                </div>
+                <div class="form-row">
+                    <label>Machine Model</label>
+                    <input type="text" id="fi-model" placeholder="ej. V810Ai S2 XLT M" autocomplete="off">
+                </div>
+                <div class="form-row">
+                    <label>System S/N</label>
+                    <input type="text" id="fi-serial" placeholder="ej. MY13138446XLT" autocomplete="off">
+                </div>
+                <div class="form-row">
+                    <label>SMTo Engineer</label>
+                    <input type="text" id="fi-engineer" placeholder="ej. Juan Cuellar" autocomplete="off">
                 </div>
             </div>
 
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closePDFModal()">Cancelar</button>
+                <button class="btn btn-danger" onclick="generatePDF()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                    Generar PDF
+                </button>
+            </div>
         </div>
     </div>
 
